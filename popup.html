@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Channel Checker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-logo">
+        <svg viewBox="0 0 24 24" fill="currentColor" class="yt-icon">
+          <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 3.993L9 16z"/>
+        </svg>
+        <span class="header-title">YT Channel Checker</span>
+      </div>
+      <button class="settings-btn" id="settingsBtn" title="Cài đặt API Key">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+      </button>
+    </header>
+
+    <!-- API Key Setup Panel -->
+    <div class="panel" id="apiPanel" style="display:none">
+      <div class="panel-header">
+        <h2>🔑 Cài đặt YouTube API Key</h2>
+        <button class="close-btn" id="closePanelBtn">✕</button>
+      </div>
+      
+      <div class="api-guide">
+        <div class="guide-step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <strong>Truy cập Google Cloud Console</strong>
+            <a href="https://console.cloud.google.com/" target="_blank" class="link-btn">Mở Console →</a>
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <strong>Tạo project mới</strong> → Enable "YouTube Data API v3"
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <strong>Tạo API Key</strong> trong mục Credentials
+          </div>
+        </div>
+        <div class="guide-step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <strong>Dán API Key vào đây</strong> (miễn phí 10.000 req/ngày)
+          </div>
+        </div>
+      </div>
+
+      <div class="input-group">
+        <label class="input-label">YouTube Data API Key</label>
+        <div class="input-wrapper">
+          <input type="password" id="apiKeyInput" class="input-field" placeholder="AIzaSy...">
+          <button class="eye-btn" id="toggleApiKey">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="eyeIcon">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="saveApiBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Lưu API Key
+      </button>
+    </div>
+
+    <!-- Main Search View -->
+    <div class="main-view" id="mainView">
+      <!-- No API Warning -->
+      <div class="no-api-banner" id="noApiBanner" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span>Chưa có API Key. <button class="link-text-btn" id="goToApiBtn">Cài đặt ngay →</button></span>
+      </div>
+
+      <!-- Search Form -->
+      <div class="search-section">
+        <div class="input-group">
+          <label class="input-label">Link kênh YouTube</label>
+          <div class="url-input-wrapper">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="url-icon">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <input type="text" id="channelUrl" class="input-field url-input" placeholder="https://www.youtube.com/@channel">
+            <button class="clear-btn" id="clearUrl" style="display:none">✕</button>
+          </div>
+        </div>
+
+        <div class="date-row">
+          <div class="input-group flex-1">
+            <label class="input-label">Ngày kiểm tra</label>
+            <input type="date" id="checkDate" class="input-field date-input">
+          </div>
+          <div class="quick-dates">
+            <button class="quick-date-btn" data-offset="0">Hôm nay</button>
+            <button class="quick-date-btn" data-offset="-1">Hôm qua</button>
+            <button class="quick-date-btn" data-offset="-2">-2 ngày</button>
+            <button class="quick-date-btn" data-offset="-3">-3 ngày</button>
+            <button class="quick-date-btn" data-offset="-7">-7 ngày</button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-check" id="checkBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.35-4.35"/>
+          </svg>
+          Kiểm tra
+        </button>
+      </div>
+
+      <!-- Loading State -->
+      <div class="loading-state" id="loadingState" style="display:none">
+        <div class="spinner-ring">
+          <svg viewBox="0 0 50 50" class="spinner-svg">
+            <circle cx="25" cy="25" r="20" fill="none" stroke-width="4"/>
+          </svg>
+        </div>
+        <p class="loading-text" id="loadingText">Đang tải thông tin kênh...</p>
+        <p class="loading-sub">Vui lòng đợi trong giây lát</p>
+      </div>
+
+      <!-- Results -->
+      <div class="results-section" id="resultsSection" style="display:none">
+        <!-- Channel Card -->
+        <div class="channel-card" id="channelCard">
+          <img src="" alt="" class="channel-avatar" id="channelAvatar">
+          <div class="channel-info">
+            <h3 class="channel-name" id="channelName"></h3>
+            <div class="channel-stats">
+              <span class="stat" id="subscriberCount"></span>
+              <span class="stat" id="totalVideoCount"></span>
+            </div>
+          </div>
+          <a class="channel-link-btn" id="channelLink" target="_blank" title="Mở kênh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </a>
+        </div>
+
+        <!-- Summary Bar -->
+        <div class="summary-bar">
+          <div class="summary-date" id="summaryDate"></div>
+          <div class="summary-count">
+            <span class="count-badge" id="videoCountBadge">0</span>
+            <span class="count-label">video</span>
+          </div>
+        </div>
+
+        <!-- No Videos Message -->
+        <div class="no-videos" id="noVideos" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          <p>Không có video nào được đăng vào ngày này</p>
+        </div>
+
+        <!-- Video List -->
+        <div class="video-list" id="videoList"></div>
+      </div>
+
+      <!-- Error State -->
+      <div class="error-state" id="errorState" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="error-icon">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="15" y1="9" x2="9" y2="15"/>
+          <line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+        <p class="error-message" id="errorMessage"></p>
+        <button class="btn btn-secondary btn-sm" id="retryBtn">Thử lại</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
