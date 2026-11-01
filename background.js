@@ -1,185 +1,269 @@
-// Background service worker
+// Background service worker - YouTube Channel Checker (RSS Feed Mode - No API Key Needed)
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('YouTube Channel Checker installed!');
+  console.log('YouTube Channel Checker installed (RSS Mode - 100% Free, No API Key)!');
 });
+
+// Cache channel metadata to avoid re-fetching web pages repeatedly
+const channelCache = new Map();
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'fetchChannelVideos') {
-    fetchChannelVideos(request.channelUrl, request.date, request.apiKey)
+    fetchChannelVideos(request.channelUrl, request.date)
       .then(result => sendResponse({ success: true, data: result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true; // Keep message channel open for async response
   }
 });
 
-async function fetchChannelVideos(channelUrl, date, apiKey) {
-  // Extract channel ID or handle from URL
-  const channelInfo = parseChannelUrl(channelUrl);
-  
-  let channelId = channelInfo.channelId;
-  
-  // If we have a handle or username, resolve to channel ID first
-  if (channelInfo.handle || channelInfo.username) {
-    channelId = await resolveChannelId(channelInfo, apiKey);
+async function fetchChannelVideos(channelUrl, date) {
+  if (!channelUrl) {
+    throw new Error('Link kênh trống');
   }
-  
+
+  // Step 1: Parse channel URL or ID
+  const channelInfo = parseChannelUrl(channelUrl);
+  let channelId = channelInfo.channelId;
+  let channelTitle = '';
+  let channelAvatar = '';
+  let subscriberCount = null;
+
+  const cacheKey = channelUrl.trim().toLowerCase();
+  if (channelCache.has(cacheKey)) {
+    const cached = channelCache.get(cacheKey);
+    channelId = cached.channelId;
+    channelTitle = cached.title || '';
+    channelAvatar = cached.avatar || '';
+    subscriberCount = cached.subscriberCount || null;
+  }
+
+  // Step 2: If we don't have channelId yet, resolve from channel web page
+  if (!channelId) {
+    const resolved = await resolveChannelFromWeb(channelUrl);
+    channelId = resolved.channelId;
+    if (resolved.title) channelTitle = resolved.title;
+    if (resolved.avatar) channelAvatar = resolved.avatar;
+    if (resolved.subscriberCount) subscriberCount = resolved.subscriberCount;
+
+    channelCache.set(cacheKey, {
+      channelId,
+      title: channelTitle,
+      avatar: channelAvatar,
+      subscriberCount
+    });
+  }
+
   if (!channelId) {
     throw new Error('Không thể xác định channel ID từ URL này');
   }
-  
-  // Get channel info
-  const channelData = await getChannelInfo(channelId, apiKey);
-  
-  // Calculate date range
-  const startDate = new Date(date);
-  startDate.setHours(0, 0, 0, 0);
-  const endDate = new Date(date);
-  endDate.setHours(23, 59, 59, 999);
-  
-  // Search for videos in the date range
-  const videos = await searchVideosInDateRange(channelId, startDate, endDate, apiKey);
-  
+
+  // Step 3: Fetch YouTube RSS XML
+  const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channelId)}`;
+  const rssResponse = await fetch(rssUrl);
+
+  if (!rssResponse.ok) {
+    if (rssResponse.status === 404) {
+      throw new Error('Kênh không tồn tại hoặc đã bị xóa');
+    }
+    throw new Error(`HTTP ${rssResponse.status}: Không thể tải RSS kênh`);
+  }
+
+  const xmlText = await rssResponse.text();
+
+  // Step 4: Parse RSS XML
+  const parsedFeed = parseRssFeed(xmlText);
+
+  if (!channelTitle && parsedFeed.channelTitle) {
+    channelTitle = parsedFeed.channelTitle;
+  }
+
+  // Calculate target date range in user's local timezone
+  // date format: 'YYYY-MM-DD'
+  const [year, month, day] = date.split('-').map(Number);
+  const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+  const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+
+  // Filter videos posted within the target date
+  const matchingVideos = [];
+  for (const item of parsedFeed.videos) {
+    const pubDate = new Date(item.publishedAt);
+    if (!isNaN(pubDate.getTime()) && pubDate >= startDate && pubDate <= endDate) {
+      matchingVideos.push(item);
+    }
+  }
+
+  // If no avatar was extracted, fallback to the latest video's thumbnail
+  if (!channelAvatar && parsedFeed.videos.length > 0) {
+    channelAvatar = parsedFeed.videos[0].thumbnail;
+  }
+
+  // Cache resolved channel info
+  if (channelTitle && !channelCache.has(cacheKey)) {
+    channelCache.set(cacheKey, {
+      channelId,
+      title: channelTitle,
+      avatar: channelAvatar,
+      subscriberCount
+    });
+  }
+
   return {
-    channel: channelData,
-    videos: videos,
+    channel: {
+      id: channelId,
+      title: channelTitle || 'Kênh YouTube',
+      thumbnail: channelAvatar || 'icons/icon48.png',
+      subscriberCount: subscriberCount
+    },
+    videos: matchingVideos,
     date: date,
-    count: videos.length
+    count: matchingVideos.length
   };
 }
 
 function parseChannelUrl(url) {
-  const patterns = [
-    // https://www.youtube.com/channel/UCxxxxxx
-    { regex: /youtube\.com\/channel\/(UC[\w-]+)/, key: 'channelId' },
-    // https://www.youtube.com/@handle
-    { regex: /youtube\.com\/@([\w.-]+)/, key: 'handle' },
-    // https://www.youtube.com/c/username
-    { regex: /youtube\.com\/c\/([\w.-]+)/, key: 'username' },
-    // https://www.youtube.com/user/username
-    { regex: /youtube\.com\/user\/([\w.-]+)/, key: 'legacyUsername' },
-    // https://www.youtube.com/username (short form)
-    { regex: /youtube\.com\/([\w.-]+)$/, key: 'username' },
-  ];
-  
-  for (const pattern of patterns) {
-    const match = url.match(pattern.regex);
-    if (match) {
-      return { [pattern.key]: match[1] };
-    }
+  const trimmed = url.trim();
+
+  // Direct channel ID: UC...
+  if (/^UC[\w-]{22}$/.test(trimmed)) {
+    return { channelId: trimmed };
   }
-  
-  // If it looks like a raw channel ID
-  if (/^UC[\w-]{22}$/.test(url.trim())) {
-    return { channelId: url.trim() };
+
+  // URL containing /channel/UC...
+  const channelMatch = trimmed.match(/youtube\.com\/channel\/(UC[\w-]{22})/i);
+  if (channelMatch) {
+    return { channelId: channelMatch[1] };
   }
-  
-  throw new Error('URL kênh YouTube không hợp lệ. Vui lòng nhập đúng định dạng.');
+
+  return { channelUrl: trimmed };
 }
 
-async function resolveChannelId(channelInfo, apiKey) {
-  let url;
-  
-  if (channelInfo.handle) {
-    // Use forHandle parameter (new API)
-    url = `https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=${encodeURIComponent(channelInfo.handle)}&key=${apiKey}`;
-  } else if (channelInfo.legacyUsername) {
-    url = `https://www.googleapis.com/youtube/v3/channels?part=id&forUsername=${encodeURIComponent(channelInfo.legacyUsername)}&key=${apiKey}`;
-  } else if (channelInfo.username) {
-    // Try forHandle first (@ handles), then forUsername
-    url = `https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=${encodeURIComponent(channelInfo.username)}&key=${apiKey}`;
+async function resolveChannelFromWeb(url) {
+  let targetUrl = url.trim();
+  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+    targetUrl = 'https://' + targetUrl;
   }
-  
-  const response = await fetch(url);
+
+  const response = await fetch(targetUrl, {
+    headers: {
+      'Accept-Language': 'vi,en;q=0.9'
+    }
+  });
+
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error?.message || `HTTP ${response.status}: Lỗi kết nối API`);
+    throw new Error(`HTTP ${response.status}: Không thể mở trang kênh YouTube`);
   }
-  
-  const data = await response.json();
-  
-  if (data.items && data.items.length > 0) {
-    return data.items[0].id;
-  }
-  
-  // Fallback: try forUsername if forHandle failed
-  if (channelInfo.username && !channelInfo.legacyUsername) {
-    const url2 = `https://www.googleapis.com/youtube/v3/channels?part=id&forUsername=${encodeURIComponent(channelInfo.username)}&key=${apiKey}`;
-    const resp2 = await fetch(url2);
-    const data2 = await resp2.json();
-    if (data2.items && data2.items.length > 0) {
-      return data2.items[0].id;
+
+  const html = await response.text();
+
+  // 1. Channel ID
+  let channelId = null;
+  const rssLinkMatch = html.match(/feeds\/videos\.xml\?channel_id=(UC[\w-]{22})/);
+  if (rssLinkMatch) {
+    channelId = rssLinkMatch[1];
+  } else {
+    const canonicalMatch = html.match(/youtube\.com\/channel\/(UC[\w-]{22})/);
+    if (canonicalMatch) {
+      channelId = canonicalMatch[1];
+    } else {
+      const browseIdMatch = html.match(/"browseId":"(UC[\w-]{22})"/);
+      if (browseIdMatch) {
+        channelId = browseIdMatch[1];
+      } else {
+        const channelIdMatch = html.match(/"channelId":"(UC[\w-]{22})"/);
+        if (channelIdMatch) {
+          channelId = channelIdMatch[1];
+        }
+      }
     }
   }
-  
-  throw new Error('Không tìm thấy kênh. Vui lòng kiểm tra lại URL hoặc handle kênh.');
-}
 
-async function getChannelInfo(channelId, apiKey) {
-  const url = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelId}&key=${apiKey}`;
-  
-  const response = await fetch(url);
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error?.message || `HTTP ${response.status}: Lỗi kết nối API`);
+  if (!channelId) {
+    throw new Error('Không thể tìm thấy ID của kênh này');
   }
-  
-  const data = await response.json();
-  
-  if (!data.items || data.items.length === 0) {
-    throw new Error('Không tìm thấy thông tin kênh');
+
+  // 2. Channel Title
+  let title = '';
+  const titleMatch = html.match(/<meta\s+property="og:title"\s+content="([^"]*)"/i) ||
+                     html.match(/<title>([\s\S]*?)(?:\s*-\s*YouTube)?<\/title>/i);
+  if (titleMatch) {
+    title = unescapeXml(titleMatch[1].trim());
   }
-  
-  const channel = data.items[0];
+
+  // 3. Avatar
+  let avatar = '';
+  const avatarMatch = html.match(/<link\s+rel="image_src"\s+href="([^"]+)"/i) ||
+                      html.match(/"avatar":\s*\{\s*"thumbnails":\s*\[\s*\{\s*"url":\s*"([^"]+)"/i) ||
+                      html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+  if (avatarMatch) {
+    avatar = avatarMatch[1];
+  }
+
+  // 4. Subscriber Count
+  let subscriberCount = null;
+  const subMatch = html.match(/"userInteractionCount":\s*"(\d+)"/);
+  if (subMatch) {
+    subscriberCount = subMatch[1];
+  }
+
   return {
-    id: channel.id,
-    title: channel.snippet.title,
-    thumbnail: channel.snippet.thumbnails?.default?.url || channel.snippet.thumbnails?.medium?.url,
-    subscriberCount: channel.statistics?.subscriberCount,
-    videoCount: channel.statistics?.videoCount,
-    description: channel.snippet.description?.substring(0, 150)
+    channelId,
+    title,
+    avatar,
+    subscriberCount
   };
 }
 
-async function searchVideosInDateRange(channelId, startDate, endDate, apiKey) {
-  const publishedAfter = startDate.toISOString();
-  const publishedBefore = endDate.toISOString();
-  
-  let videos = [];
-  let nextPageToken = null;
-  
-  do {
-    let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&type=video&order=date&publishedAfter=${publishedAfter}&publishedBefore=${publishedBefore}&maxResults=50&key=${apiKey}`;
-    
-    if (nextPageToken) {
-      url += `&pageToken=${nextPageToken}`;
+function parseRssFeed(xml) {
+  let channelTitle = '';
+  const firstEntryIndex = xml.indexOf('<entry>');
+  const headerXml = firstEntryIndex !== -1 ? xml.substring(0, firstEntryIndex) : xml;
+  const titleMatch = headerXml.match(/<title>([\s\S]*?)<\/title>/i);
+  if (titleMatch) {
+    channelTitle = unescapeXml(titleMatch[1].trim());
+  }
+
+  const videos = [];
+  const entryRegex = /<entry>([\s\S]*?)<\/entry>/gi;
+  let match;
+
+  while ((match = entryRegex.exec(xml)) !== null) {
+    const entryXml = match[1];
+
+    const idMatch = entryXml.match(/<yt:videoId>([\s\S]*?)<\/yt:videoId>/i);
+    const videoTitleMatch = entryXml.match(/<title>([\s\S]*?)<\/title>/i);
+    const pubMatch = entryXml.match(/<published>([\s\S]*?)<\/published>/i);
+    const thumbMatch = entryXml.match(/<media:thumbnail\s+[^>]*url="([^"]+)"/i);
+    const descMatch = entryXml.match(/<media:description>([\s\S]*?)<\/media:description>/i);
+
+    const videoId = idMatch ? idMatch[1].trim() : '';
+    const title = videoTitleMatch ? unescapeXml(videoTitleMatch[1].trim()) : '';
+    const publishedAt = pubMatch ? pubMatch[1].trim() : '';
+    const thumbnail = thumbMatch ? thumbMatch[1] : (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '');
+    const description = descMatch ? unescapeXml(descMatch[1].trim()) : '';
+
+    if (videoId) {
+      videos.push({
+        id: videoId,
+        title,
+        thumbnail,
+        publishedAt,
+        description: description.substring(0, 100)
+      });
     }
-    
-    const response = await fetch(url);
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error?.message || `HTTP ${response.status}: Lỗi kết nối API`);
-    }
-    
-    const data = await response.json();
-    
-    if (data.items) {
-      for (const item of data.items) {
-        videos.push({
-          id: item.id.videoId,
-          title: item.snippet.title,
-          thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
-          publishedAt: item.snippet.publishedAt,
-          description: item.snippet.description?.substring(0, 100)
-        });
-      }
-    }
-    
-    nextPageToken = data.nextPageToken;
-    
-    // Safety: max 5 pages (250 videos)
-    if (videos.length >= 250) break;
-    
-  } while (nextPageToken);
-  
-  return videos;
+  }
+
+  return {
+    channelTitle,
+    videos
+  };
+}
+
+function unescapeXml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
 }

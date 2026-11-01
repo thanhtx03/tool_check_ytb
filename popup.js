@@ -1,6 +1,6 @@
 // ===== State =====
 let apiKey = '';
-const MAX_CHANNELS = 20;
+const MAX_CHANNELS = 500;
 let lastImportSourceName = '';
 
 // ===== DOM Elements =====
@@ -61,10 +61,9 @@ async function init() {
   if (stored.ytApiKey) {
     apiKey = stored.ytApiKey;
     if (apiKeyInput) apiKeyInput.value = apiKey;
-    if (noApiBanner) noApiBanner.style.display = 'none';
-  } else {
-    if (noApiBanner) noApiBanner.style.display = 'flex';
   }
+  // Method 1: RSS mode is active, API key is optional, do not show warning banner
+  if (noApiBanner) noApiBanner.style.display = 'none';
 
   // Load saved channels
   const saved = stored.savedChannels && stored.savedChannels.length > 0 ? stored.savedChannels : [''];
@@ -470,11 +469,6 @@ async function runCheck() {
     showToast('Vui lòng chọn ngày!', 'error');
     return;
   }
-  if (!apiKey) {
-    if (apiPanel) apiPanel.style.display = 'block';
-    showToast('Vui lòng nhập YouTube API Key!', 'error');
-    return;
-  }
 
   const selectedDate = new Date(date + 'T00:00:00');
   const sevenDaysAgo = new Date();
@@ -498,7 +492,7 @@ async function runCheck() {
   checkBtn.disabled = true;
   checkBtn.innerHTML = `
     <div class="spinner-inline" style="border-top-color:#fff;width:15px;height:15px;margin-right:6px"></div>
-    Đang kiểm tra (${urls.length} kênh)...
+    Đang kiểm tra (0/${urls.length})...
   `;
 
   if (resultsWrapper) resultsWrapper.style.display = 'block';
@@ -522,47 +516,60 @@ async function runCheck() {
     resultsWrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  // Fetch concurrently
-  const promises = urls.map(url =>
-    chrome.runtime.sendMessage({
-      action: 'fetchChannelVideos',
-      channelUrl: url,
-      date,
-      apiKey
-    })
-    .then(resp => ({ url, resp }))
-    .catch(err => ({ url, resp: { success: false, error: err.message } }))
-  );
-
-  let totalVideos = 0;
+  // Controlled concurrency queue (up to 6 parallel requests for fast & smooth processing)
+  const CONCURRENCY = 6;
+  let urlIndex = 0;
   let doneCount = 0;
+  let totalVideos = 0;
 
-  promises.forEach(promise => {
-    promise.then(({ url, resp }) => {
-      doneCount++;
-      const card = cardMap[url];
-      if (card) {
-        if (resp && resp.success) {
-          totalVideos += (resp.data ? resp.data.count : 0);
-          updateCardSuccess(card, resp.data);
-        } else {
-          updateCardError(card, resp ? resp.error : 'Lỗi kết nối');
+  async function worker() {
+    while (urlIndex < urls.length) {
+      const idx = urlIndex++;
+      const url = urls[idx];
+      try {
+        const resp = await chrome.runtime.sendMessage({
+          action: 'fetchChannelVideos',
+          channelUrl: url,
+          date
+        });
+        doneCount++;
+        const card = cardMap[url];
+        if (card) {
+          if (resp && resp.success) {
+            totalVideos += (resp.data ? resp.data.count : 0);
+            updateCardSuccess(card, resp.data);
+          } else {
+            updateCardError(card, resp ? resp.error : 'Lỗi kết nối');
+          }
         }
+      } catch (err) {
+        doneCount++;
+        const card = cardMap[url];
+        if (card) updateCardError(card, err.message || 'Lỗi kết nối');
       }
 
-      if (doneCount === urls.length) {
-        checkBtn.disabled = false;
+      if (checkBtn) {
         checkBtn.innerHTML = `
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="m21 21-4.35-4.35"/>
-          </svg>
-          Kiểm tra tất cả
+          <div class="spinner-inline" style="border-top-color:#fff;width:15px;height:15px;margin-right:6px"></div>
+          Đang kiểm tra (${doneCount}/${urls.length})...
         `;
-        showSummary(totalVideos, urls.length);
       }
-    });
-  });
+    }
+  }
+
+  const workerCount = Math.min(CONCURRENCY, urls.length);
+  const workers = Array.from({ length: workerCount }, () => worker());
+  await Promise.all(workers);
+
+  checkBtn.disabled = false;
+  checkBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="11" cy="11" r="8"/>
+      <path d="m21 21-4.35-4.35"/>
+    </svg>
+    Kiểm tra tất cả
+  `;
+  showSummary(totalVideos, urls.length);
 }
 
 // ===== Card Builders =====
@@ -601,7 +608,7 @@ function updateCardSuccess(card, data) {
   const channelThumb = channel && channel.thumbnail ? channel.thumbnail : 'icons/icon48.png';
   const channelSub = channel && channel.subscriberCount
     ? `👥 ${formatNumber(channel.subscriberCount)} người đăng ký`
-    : 'Kênh YouTube';
+    : (channel && channel.id ? `ID: ${channel.id}` : 'Kênh YouTube');
   const channelLink = channel && channel.id
     ? `https://www.youtube.com/channel/${channel.id}`
     : '#';
