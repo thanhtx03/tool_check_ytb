@@ -19,12 +19,35 @@
         </svg>
         <span class="header-title">YT Channel Checker</span>
       </div>
-      <button class="settings-btn" id="settingsBtn" title="Cài đặt API Key">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-        </svg>
-      </button>
+      <div class="header-actions">
+        <div class="pin-wrap" id="pinWrap">
+          <button class="pin-btn" id="pinBtn" title="Hướng dẫn ghim extension">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="17" x2="12" y2="22"/>
+              <path d="M5 17h14v-2l-2-2V5a1 1 0 0 0-1-1h-8a1 1 0 0 0-1 1v8l-2 2v2z"/>
+              <circle cx="12" cy="2" r="1"/>
+            </svg>
+            <span>Ghim</span>
+          </button>
+          <div class="pin-tooltip" id="pinTooltip" style="display:none">
+            <div class="pin-tooltip-header">
+              <span>📌 Cách ghim Extension</span>
+              <button class="pin-tooltip-close" id="pinTooltipClose">✕</button>
+            </div>
+            <div class="pin-steps">
+              <div class="pin-step"><b>1.</b> Bấm icon <b>Mảnh ghép (🧩)</b> trên góc phải Chrome</div>
+              <div class="pin-step"><b>2.</b> Tìm <b>YT Channel Checker</b></div>
+              <div class="pin-step"><b>3.</b> Bấm icon <b>Ghim 📌</b> để giữ extension luôn hiển thị</div>
+            </div>
+          </div>
+        </div>
+        <button class="settings-btn" id="settingsBtn" title="Cài đặt API Key">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+        </button>
+      </div>
     </header>
 
     <!-- API Key Setup Panel -->
@@ -126,21 +149,16 @@
             Danh sách kênh
           </span>
           <div class="header-btn-group">
-            <!-- Import File: dùng label để tránh popup bị đóng khi JS gọi .click() -->
-            <label class="import-file-btn" id="importFileBtn" title="Import từ file .txt / .md">
+            <!-- Paste URLs Button -->
+            <button class="import-file-btn" id="pasteToggleBtn" title="Dán danh sách link từ file">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                <line x1="12" y1="11" x2="12" y2="17"/>
+                <line x1="9" y1="14" x2="15" y2="14"/>
               </svg>
-              Import file
-              <input
-                type="file"
-                id="fileInput"
-                accept=".txt,.md,.csv,.text"
-                style="display:none"
-              >
-            </label>
+              Dán link
+            </button>
             <button class="add-channel-btn" id="addChannelBtn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <line x1="12" y1="5" x2="12" y2="19"/>
@@ -152,7 +170,33 @@
 
         </div>
 
-        <!-- File Badge: hiện tên file đã import (persistent) -->
+        <!-- Paste Area (toggle) -->
+        <div class="paste-area" id="pasteArea" style="display:none">
+          <div class="paste-header">
+            <span class="paste-title">📋 Dán danh sách link YouTube</span>
+            <div class="paste-header-actions">
+              <button class="paste-clip-btn" id="pasteClipBtn" title="Dán nhanh nội dung từ Clipboard">📋 Dán Clipboard</button>
+              <button class="paste-close-btn" id="pasteCloseBtn">✕</button>
+            </div>
+          </div>
+          <textarea
+            id="pasteTextarea"
+            class="paste-textarea"
+            rows="6"
+            placeholder="Dán link ở đây — mỗi dòng 1 link kênh&#10;Ví dụ:&#10;https://www.youtube.com/channel/UCxxxxxxx&#10;youtube.com/@kenhcuaban&#10;&#10;Mẹo: Mở file .txt → Ctrl+A → Ctrl+C → Dán vào đây"
+          ></textarea>
+          <div class="paste-actions">
+            <span class="paste-hint" id="pasteHint">0 link phát hiện</span>
+            <button class="btn btn-paste" id="pasteImportBtn" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              Nạp kênh
+            </button>
+          </div>
+        </div>
+
+        <!-- File Badge: hiện tên/số kênh đã import (persistent) -->
         <div class="file-badge" id="fileBadge" style="display:none">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="file-badge-icon">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -164,7 +208,7 @@
             <span class="file-badge-name" id="fileBadgeName"></span>
             <span class="file-badge-count" id="fileBadgeCount"></span>
           </div>
-          <button class="file-badge-clear" id="fileBadgeClear" title="Xoá file, nhập thủ công">
+          <button class="file-badge-clear" id="fileBadgeClear" title="Xoá, nhập thủ công">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>

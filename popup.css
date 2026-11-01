@@ -72,6 +72,84 @@ body::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: var(
   background: linear-gradient(135deg, #fff 0%, var(--accent-pink) 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pin-wrap {
+  position: relative;
+}
+
+.pin-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: var(--ease);
+}
+.pin-btn svg { width: 14px; height: 14px; color: var(--accent-amber); }
+.pin-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.pin-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 250px;
+  background: var(--bg-card);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  z-index: 300;
+  animation: fadeSlideIn 0.2s ease;
+}
+
+.pin-tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-amber);
+}
+
+.pin-tooltip-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  line-height: 1;
+}
+.pin-tooltip-close:hover { color: var(--text-primary); }
+
+.pin-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.pin-steps b, .pin-steps strong { color: var(--text-primary); }
+
 .settings-btn {
   width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;
@@ -246,17 +324,81 @@ input[type="date"].input-field { cursor: pointer; color-scheme: dark; }
 .import-file-btn svg { width: 13px; height: 13px; }
 .import-file-btn:hover { background: rgba(59,130,246,0.18); border-color: var(--accent-blue); }
 
-/* Import result notice */
-.import-notice {
-  display: flex; align-items: center; gap: 6px;
-  padding: 7px 10px;
-  background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2);
-  border-radius: var(--r-sm);
-  font-size: 11.5px; color: #93c5fd;
+/* ===== Paste Area ===== */
+.paste-area {
+  padding: 0 16px;
   animation: fadeSlideIn 0.2s ease;
+  display: flex; flex-direction: column; gap: 8px;
 }
-.import-notice svg { width: 13px; height: 13px; flex-shrink: 0; }
-.import-notice-filename { font-weight: 600; color: #bfdbfe; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paste-header {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.paste-title {
+  font-size: 12.5px; font-weight: 600; color: var(--text-primary);
+}
+.paste-header-actions {
+  display: flex; align-items: center; gap: 6px;
+}
+.paste-clip-btn {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 8px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer; color: var(--text-secondary);
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500;
+  transition: var(--ease);
+}
+.paste-clip-btn:hover {
+  background: rgba(59,130,246,0.15); color: var(--accent-blue);
+  border-color: rgba(59,130,246,0.3);
+}
+.paste-close-btn {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer; color: var(--text-muted);
+  font-size: 11px; transition: var(--ease);
+}
+.paste-close-btn:hover { background: rgba(255,61,61,0.15); color: var(--accent-red); border-color: rgba(255,61,61,0.3); }
+
+.paste-textarea {
+  width: 100%;
+  min-height: 100px; max-height: 180px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--r-sm); color: var(--text-primary);
+  font-family: 'Inter', monospace; font-size: 12px; line-height: 1.6;
+  padding: 10px 12px; outline: none;
+  resize: vertical; transition: var(--ease);
+}
+.paste-textarea:focus {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+  background: var(--bg-hover);
+}
+.paste-textarea.dragover {
+  border-color: var(--accent-blue);
+  background: rgba(59,130,246,0.08);
+  box-shadow: 0 0 0 2px var(--accent-blue);
+}
+.paste-textarea::placeholder { color: var(--text-muted); font-size: 11.5px; }
+
+.paste-actions {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.paste-hint {
+  font-size: 11.5px; color: var(--text-muted); font-weight: 500;
+}
+.paste-hint.has-links { color: var(--accent-green); font-weight: 600; }
+
+.btn-paste {
+  padding: 6px 14px; font-size: 12.5px;
+  background: linear-gradient(135deg, var(--accent-blue) 0%, #2563eb 100%);
+  color: #fff; width: auto;
+  box-shadow: 0 2px 10px rgba(59,130,246,0.25);
+}
+.btn-paste:hover:not(:disabled) { filter: brightness(1.15); transform: translateY(-1px); }
+.btn-paste:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn-paste svg { width: 14px; height: 14px; }
+
 
 /* ===== File Badge (persistent import indicator) ===== */
 .file-badge {

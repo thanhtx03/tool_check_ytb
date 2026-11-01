@@ -19,7 +19,8 @@
   },
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "clipboardRead"
   ],
   "host_permissions": [
     "https://www.googleapis.com/*",
