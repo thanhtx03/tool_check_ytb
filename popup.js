@@ -1,6 +1,6 @@
 // ===== State =====
 let apiKey = '';
-const MAX_CHANNELS = 10;
+const MAX_CHANNELS = 20;
 
 // ===== DOM =====
 const settingsBtn     = document.getElementById('settingsBtn');
@@ -24,9 +24,16 @@ const resultsTitle    = document.getElementById('resultsTitle');
 const resultsDateBadge = document.getElementById('resultsDateBadge');
 const resultsList     = document.getElementById('resultsList');
 
+const fileInput       = document.getElementById('fileInput');
+
+const fileBadge       = document.getElementById('fileBadge');
+const fileBadgeName   = document.getElementById('fileBadgeName');
+const fileBadgeCount  = document.getElementById('fileBadgeCount');
+const fileBadgeClear  = document.getElementById('fileBadgeClear');
+
 // ===== Init =====
 async function init() {
-  const stored = await chrome.storage.local.get(['ytApiKey', 'savedChannels']);
+  const stored = await chrome.storage.local.get(['ytApiKey', 'savedChannels', 'importedFile']);
 
   if (stored.ytApiKey) {
     apiKey = stored.ytApiKey;
@@ -40,6 +47,11 @@ async function init() {
   const saved = stored.savedChannels || [''];
   saved.forEach(url => addChannelRow(url));
 
+  // Restore file badge if a file was previously imported
+  if (stored.importedFile) {
+    showFileBadge(stored.importedFile.name, stored.importedFile.count);
+  }
+
   setDateOffset(0);
 }
 
@@ -47,6 +59,90 @@ async function init() {
 settingsBtn.addEventListener('click', () => { apiPanel.style.display = 'block'; });
 closePanelBtn.addEventListener('click', () => { apiPanel.style.display = 'none'; });
 goToApiBtn.addEventListener('click', () => { apiPanel.style.display = 'block'; });
+
+// ===== Pin Button =====
+const pinBtn          = document.getElementById('pinBtn');
+const pinTooltip      = document.getElementById('pinTooltip');
+const pinTooltipClose = document.getElementById('pinTooltipClose');
+
+pinBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const isOpen = pinTooltip.style.display !== 'none';
+  pinTooltip.style.display = isOpen ? 'none' : 'block';
+});
+pinTooltipClose.addEventListener('click', (e) => {
+  e.stopPropagation();
+  pinTooltip.style.display = 'none';
+});
+document.addEventListener('click', (e) => {
+  if (!document.getElementById('pinWrap').contains(e.target)) {
+    pinTooltip.style.display = 'none';
+  }
+});
+
+// ===== Import File =====
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  importFromFile(file);
+});
+
+function importFromFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    // Parse: split by lines, trim, remove blanks and comment lines (#)
+    const rawLines = text.split(/\r?\n/);
+    const urls = rawLines
+      .map(l => l.trim())
+      .filter(l => l.length > 0 && !l.startsWith('#'))
+      // Normalize: add https:// if missing
+      .map(l => l.startsWith('http') ? l : 'https://' + l)
+      // Keep only lines that look like YouTube URLs
+      .filter(l => l.includes('youtube.com') || l.includes('youtu.be'));
+
+    if (urls.length === 0) {
+      showToast('Không tìm thấy link YouTube hợp lệ trong file!', 'error');
+      return;
+    }
+
+    if (urls.length > MAX_CHANNELS) {
+      showToast(`File có ${urls.length} kênh, chỉ lấy ${MAX_CHANNELS} kênh đầu tiên.`, 'error');
+    }
+
+    const toImport = urls.slice(0, MAX_CHANNELS);
+
+    // Replace existing rows
+    channelInputs.innerHTML = '';
+    toImport.forEach(url => addChannelRow(url));
+    saveChannels();
+
+    // Show and persist file badge
+    setFileBadge(file.name, toImport.length);
+  };
+  reader.onerror = () => showToast('Lỗi đọc file!', 'error');
+  reader.readAsText(file, 'utf-8');
+}
+
+// Show the persistent file badge and save to storage
+function setFileBadge(filename, count) {
+  chrome.storage.local.set({ importedFile: { name: filename, count } });
+  showFileBadge(filename, count);
+}
+
+function showFileBadge(filename, count) {
+  fileBadgeName.textContent = filename;
+  fileBadgeCount.textContent = `${count} kênh được nạp`;
+  fileBadge.style.display = 'flex';
+}
+
+// Clear button: xoá badge và storage
+fileBadgeClear.addEventListener('click', async () => {
+  await chrome.storage.local.remove('importedFile');
+  fileBadge.style.display = 'none';
+  fileBadgeName.textContent = '';
+  fileBadgeCount.textContent = '';
+});
 
 toggleApiKey.addEventListener('click', () => {
   const isPwd = apiKeyInput.type === 'password';

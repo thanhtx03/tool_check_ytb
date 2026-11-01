@@ -125,12 +125,50 @@
             </svg>
             Danh sách kênh
           </span>
-          <button class="add-channel-btn" id="addChannelBtn">
+          <div class="header-btn-group">
+            <!-- Import File: dùng label để tránh popup bị đóng khi JS gọi .click() -->
+            <label class="import-file-btn" id="importFileBtn" title="Import từ file .txt / .md">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              Import file
+              <input
+                type="file"
+                id="fileInput"
+                accept=".txt,.md,.csv,.text"
+                style="display:none"
+              >
+            </label>
+            <button class="add-channel-btn" id="addChannelBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Thêm kênh
+            </button>
+          </div>
+
+        </div>
+
+        <!-- File Badge: hiện tên file đã import (persistent) -->
+        <div class="file-badge" id="fileBadge" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="file-badge-icon">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          <div class="file-badge-info">
+            <span class="file-badge-name" id="fileBadgeName"></span>
+            <span class="file-badge-count" id="fileBadgeCount"></span>
+          </div>
+          <button class="file-badge-clear" id="fileBadgeClear" title="Xoá file, nhập thủ công">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
-            Thêm kênh
           </button>
         </div>
 
