@@ -23,6 +23,7 @@ const quickDateBtns    = document.querySelectorAll('.quick-date-btn');
 
 const channelInputs    = document.getElementById('channelInputs');
 const addChannelBtn    = document.getElementById('addChannelBtn');
+const clearAllBtn      = document.getElementById('clearAllBtn');
 const checkBtn         = document.getElementById('checkBtn');
 
 const pasteToggleBtn   = document.getElementById('pasteToggleBtn');
@@ -212,10 +213,13 @@ function addChannelRow(value = '') {
     }, 150);
   });
 
-  row.querySelector('.channel-url-input').addEventListener('input', saveChannels);
+  row.querySelector('.channel-url-input').addEventListener('input', () => {
+    saveChannels();
+    updateRowControls();
+  });
 
   channelInputs.appendChild(row);
-  updateAddBtn();
+  updateRowControls();
 }
 
 function refreshRowNumbers() {
@@ -226,14 +230,22 @@ function refreshRowNumbers() {
     const removeBtn = row.querySelector('.remove-channel-btn');
     if (removeBtn) removeBtn.disabled = rows.length <= 1;
   });
-  updateAddBtn();
+  updateRowControls();
 }
 
-function updateAddBtn() {
-  if (!addChannelBtn) return;
-  const count = getRows().length;
-  addChannelBtn.disabled = count >= MAX_CHANNELS;
-  addChannelBtn.title = count >= MAX_CHANNELS ? `Tối đa ${MAX_CHANNELS} kênh` : 'Thêm kênh mới';
+function updateRowControls() {
+  const rows = getRows();
+  const count = rows.length;
+
+  if (addChannelBtn) {
+    addChannelBtn.disabled = count >= MAX_CHANNELS;
+    addChannelBtn.title = count >= MAX_CHANNELS ? `Tối đa ${MAX_CHANNELS} kênh` : 'Thêm kênh mới';
+  }
+
+  if (clearAllBtn) {
+    const hasAnyValue = rows.some(r => r.querySelector('.channel-url-input').value.trim().length > 0);
+    clearAllBtn.disabled = count <= 1 && !hasAnyValue;
+  }
 }
 
 async function saveChannels() {
@@ -248,6 +260,38 @@ if (addChannelBtn) {
     if (inputs.length > 0) {
       inputs[inputs.length - 1].focus();
     }
+  });
+}
+
+if (clearAllBtn) {
+  clearAllBtn.addEventListener('click', async () => {
+    const rows = getRows();
+    const hasAnyValue = rows.some(r => r.querySelector('.channel-url-input').value.trim().length > 0);
+    if (rows.length <= 1 && !hasAnyValue) {
+      showToast('Danh sách kênh đã trống!', 'error');
+      return;
+    }
+
+    if (channelInputs) {
+      channelInputs.innerHTML = '';
+      addChannelRow('');
+    }
+    await chrome.storage.local.set({ savedChannels: [] });
+    await chrome.storage.local.remove('importedFile');
+
+    if (fileBadge) fileBadge.style.display = 'none';
+    if (fileBadgeName) fileBadgeName.textContent = '';
+    if (fileBadgeCount) fileBadgeCount.textContent = '';
+
+    if (resultsWrapper) resultsWrapper.style.display = 'none';
+
+    if (pasteTextarea) {
+      pasteTextarea.value = '';
+      updatePastePreview();
+    }
+
+    updateRowControls();
+    showToast('✓ Đã xóa tất cả các link kênh!');
   });
 }
 
