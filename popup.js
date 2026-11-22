@@ -524,9 +524,33 @@ function updateCardSuccess(card, data) {
   const isZero = count === 0;
   const channelTitle = channel ? channel.title : 'Kênh YouTube';
   const channelThumb = channel && channel.thumbnail ? channel.thumbnail : 'icons/icon48.png';
-  const channelSub = channel && channel.subscriberCount
-    ? `👥 ${formatNumber(channel.subscriberCount)} người đăng ký`
-    : (channel && channel.id ? `ID: ${channel.id}` : 'Kênh YouTube');
+
+  // Total videos of channel (all-time lifetime count)
+  const totalVideosRaw = channel && channel.totalVideos ? channel.totalVideos : '';
+  let totalVideoDisplay = '—';
+  if (totalVideosRaw) {
+    const cleaned = totalVideosRaw
+      .replace(/\s*videos?/i, '')
+      .replace(/동영상\s*/g, '')
+      .replace(/\s*개의?/g, '')
+      .trim();
+    totalVideoDisplay = cleaned || totalVideosRaw;
+  }
+
+  // Subtitle metadata: Subscribers + Total Videos
+  const metaParts = [];
+  if (channel && channel.subscriberCount) {
+    metaParts.push(channel.subscriberCount.includes('đăng ký')
+      ? `👥 ${channel.subscriberCount}`
+      : `👥 ${formatNumber(channel.subscriberCount)} người đăng ký`);
+  } else if (channel && channel.id) {
+    metaParts.push(`ID: ${channel.id}`);
+  }
+  if (totalVideosRaw) {
+    metaParts.push(`📁 ${totalVideosRaw}`);
+  }
+  const channelSub = metaParts.length > 0 ? metaParts.join(' • ') : 'Kênh YouTube';
+
   const channelLink = channel && channel.id
     ? `https://www.youtube.com/channel/${channel.id}`
     : '#';
@@ -545,9 +569,13 @@ function updateCardSuccess(card, data) {
       <div class="result-name" title="${escapeHtml(channelTitle)}">${escapeHtml(channelTitle)}</div>
       <div class="result-meta">${escapeHtml(channelSub)}</div>
     </div>
-    <div class="result-count-wrap">
+    <div class="result-count-wrap" title="Số video đăng trong ngày được chọn">
       <div class="result-count ${isZero ? 'zero' : ''}">${count}</div>
-      <div class="result-count-label">video</div>
+      <div class="result-count-label">trong ngày</div>
+    </div>
+    <div class="result-count-wrap total" title="Tổng số video của kênh từ trước đến nay">
+      <div class="result-count total ${totalVideoDisplay === '—' ? 'zero' : ''}">${escapeHtml(totalVideoDisplay)}</div>
+      <div class="result-count-label">tổng video</div>
     </div>
     <a
       class="result-link-btn"

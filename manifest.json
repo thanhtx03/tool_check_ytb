@@ -23,8 +23,18 @@
     "sidePanel",
     "storage",
     "activeTab",
-    "clipboardRead"
+    "clipboardRead",
+    "declarativeNetRequest"
   ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
   "host_permissions": [
     "*://*.youtube.com/*",
     "*://youtube.com/*",

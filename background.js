@@ -1,68 +1,107 @@
-// Background service worker - YouTube Channel Checker (Side Panel & RSS Feed Mode - No API Key Needed)
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('YouTube Channel Checker installed (Side Panel & RSS Mode - 100% Free, No API Key)!');
+// YouTube Channel Checker - Background Service Worker
+// Side Panel Support, DeclarativeNetRequest, Free YouTube RSS & InnerTube API
 
-  // Configure side panel behavior: open side panel when clicking the toolbar action icon
+// Setup DeclarativeNetRequest to ensure InnerTube API calls send youtube.com Origin & Referer
+async function setupDeclarativeRules() {
+  if (!chrome.declarativeNetRequest) return;
+  try {
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: [1001],
+      addRules: [
+        {
+          id: 1001,
+          priority: 1,
+          action: {
+            type: 'modifyHeaders',
+            requestHeaders: [
+              { header: 'Origin', operation: 'set', value: 'https://www.youtube.com' },
+              { header: 'Referer', operation: 'set', value: 'https://www.youtube.com/' }
+            ]
+          },
+          condition: {
+            urlFilter: '||youtube.com/youtubei/*',
+            resourceTypes: ['xmlhttprequest', 'other']
+          }
+        }
+      ]
+    });
+  } catch (err) {
+    console.warn('Declarative rule update notice:', err);
+  }
+}
+setupDeclarativeRules();
+
+// Configure extension icon click to open Side Panel on the right side
+chrome.runtime.onInstalled.addListener(() => {
+  setupDeclarativeRules();
   if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
-    chrome.sidePanel
-      .setPanelBehavior({ openPanelOnActionClick: true })
-      .catch((error) => console.error('SidePanel setPanelBehavior error:', error));
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
+      .catch((err) => console.error('Error setting panel behavior:', err));
   }
 });
 
-// Configure side panel on startup/worker awake
-if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
-  chrome.sidePanel
-    .setPanelBehavior({ openPanelOnActionClick: true })
-    .catch((error) => console.error('SidePanel setPanelBehavior error:', error));
-}
+chrome.runtime.onStartup.addListener(() => {
+  setupDeclarativeRules();
+  if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
+      .catch((err) => console.error('Error setting panel behavior:', err));
+  }
+});
 
-// Fallback: If action.onClicked triggers, open the side panel
+// Fallback action click handler in case browser does not support setPanelBehavior
 if (chrome.action && chrome.action.onClicked) {
   chrome.action.onClicked.addListener(async (tab) => {
-    if (chrome.sidePanel && chrome.sidePanel.open) {
+    if (chrome.sidePanel && chrome.sidePanel.open && tab && tab.windowId) {
       try {
         await chrome.sidePanel.open({ windowId: tab.windowId });
-      } catch (e) {
-        console.error('Failed to open side panel on click:', e);
+      } catch (err) {
+        console.warn('Could not open side panel via onClicked:', err);
       }
     }
   });
 }
 
-// Cache channel metadata to avoid re-resolving channels repeatedly
+// In-memory channel metadata cache to eliminate redundant fetches
 const channelCache = new Map();
 
+// ===== Main Message Listener =====
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'fetchChannelVideos') {
-    fetchChannelVideos(request.channelUrl, request.date)
-      .then(result => sendResponse({ success: true, data: result }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
+    handleFetchVideos(request.channelUrl, request.date)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(err => sendResponse({ success: false, error: err.message || 'Lỗi không xác định' }));
     return true; // Keep message channel open for async response
   }
 });
 
-async function fetchChannelVideos(channelUrl, date) {
-  if (!channelUrl) {
-    throw new Error('Link kênh trống');
+// ===== Core Logic: Fetch Channel Videos via RSS (0 Quota) =====
+async function handleFetchVideos(channelUrl, date) {
+  if (!channelUrl || !channelUrl.trim()) {
+    throw new Error('URL kênh không hợp lệ');
   }
 
   // Normalize URL (strip tracking params like ?si=..., normalize to https://www.youtube.com/)
   const cleanUrl = cleanYoutubeUrl(channelUrl);
 
-  // Step 1: Parse direct channel ID (if already in URL)
+  // Step 1: Check in-memory cache
   let channelId = parseDirectChannelId(cleanUrl);
   let channelTitle = '';
   let channelAvatar = '';
   let subscriberCount = null;
+  let totalVideos = null;
 
   const cacheKey = cleanUrl.toLowerCase();
+  let cachedMeta = null;
   if (channelCache.has(cacheKey)) {
     const cached = channelCache.get(cacheKey);
-    channelId = cached.channelId;
-    channelTitle = cached.title || '';
-    channelAvatar = cached.avatar || '';
-    subscriberCount = cached.subscriberCount || null;
+    if (cached && cached.totalVideos) {
+      channelId = cached.channelId;
+      channelTitle = cached.title || '';
+      channelAvatar = cached.avatar || '';
+      subscriberCount = cached.subscriberCount || null;
+      totalVideos = cached.totalVideos || null;
+      cachedMeta = cached;
+    }
   }
 
   // Step 2: If we don't have channelId yet, resolve via InnerTube API (fast) or web fallback
@@ -74,21 +113,36 @@ async function fetchChannelVideos(channelUrl, date) {
     throw new Error('Không thể xác định channel ID từ URL này');
   }
 
-  // Step 3: Fetch YouTube RSS XML
-  const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channelId)}`;
-  const rssResponse = await fetch(rssUrl);
+  // Step 3: Fetch YouTube RSS XML and Channel Metadata in parallel
+  const rssPromise = fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channelId)}`)
+    .then(async (res) => {
+      if (!res.ok) {
+        if (res.status === 404) throw new Error('Kênh không tồn tại hoặc đã bị xóa');
+        throw new Error(`HTTP ${res.status}: Không thể tải RSS kênh`);
+      }
+      return res.text();
+    });
 
-  if (!rssResponse.ok) {
-    if (rssResponse.status === 404) {
-      throw new Error('Kênh không tồn tại hoặc đã bị xóa');
-    }
-    throw new Error(`HTTP ${rssResponse.status}: Không thể tải RSS kênh`);
+  const metaPromise = (cachedMeta && cachedMeta.totalVideos)
+    ? Promise.resolve(cachedMeta)
+    : getChannelMetadata(channelId, cleanUrl);
+
+  const [rssResult, metaResult] = await Promise.allSettled([rssPromise, metaPromise]);
+
+  if (rssResult.status !== 'fulfilled') {
+    throw rssResult.reason || new Error('Lỗi tải dữ liệu kênh');
   }
 
-  const xmlText = await rssResponse.text();
-
-  // Step 4: Parse RSS XML
+  const xmlText = rssResult.value;
   const parsedFeed = parseRssFeed(xmlText);
+
+  if (metaResult.status === 'fulfilled' && metaResult.value) {
+    const meta = metaResult.value;
+    if (meta.title) channelTitle = meta.title;
+    if (meta.avatar) channelAvatar = meta.avatar;
+    if (meta.subscriberCount) subscriberCount = meta.subscriberCount;
+    if (meta.totalVideos) totalVideos = meta.totalVideos;
+  }
 
   if (!channelTitle && parsedFeed.channelTitle) {
     channelTitle = parsedFeed.channelTitle;
@@ -115,19 +169,23 @@ async function fetchChannelVideos(channelUrl, date) {
   }
 
   // Cache resolved channel info
-  channelCache.set(cacheKey, {
-    channelId,
-    title: channelTitle,
-    avatar: channelAvatar,
-    subscriberCount
-  });
+  if (totalVideos) {
+    channelCache.set(cacheKey, {
+      channelId,
+      title: channelTitle,
+      avatar: channelAvatar,
+      subscriberCount,
+      totalVideos
+    });
+  }
 
   return {
     channel: {
       id: channelId,
       title: channelTitle || 'Kênh YouTube',
       thumbnail: channelAvatar || 'icons/icon48.png',
-      subscriberCount: subscriberCount
+      subscriberCount: subscriberCount,
+      totalVideos: totalVideos
     },
     videos: matchingVideos,
     date: date,
@@ -232,6 +290,178 @@ async function resolveChannelId(url) {
   }
 
   throw new Error('Không thể tìm thấy ID của kênh này');
+}
+
+// Helper to extract channel metadata from YouTube JSON structure
+function extractMetadataFromYtData(data) {
+  if (!data) return {};
+
+  let title = '';
+  let avatar = '';
+  let subscriberCount = null;
+  let videoCount = null;
+
+  // 1. Current YouTube pageHeaderViewModel
+  const vm = data?.header?.pageHeaderRenderer?.content?.pageHeaderViewModel;
+  if (vm) {
+    title = vm?.title?.dynamicTextViewModel?.text?.content || '';
+    const sources = vm?.image?.decoratedAvatarViewModel?.avatar?.avatarViewModel?.image?.sources;
+    avatar = sources && sources.length > 0 ? sources[sources.length - 1]?.url : '';
+
+    const rows = vm?.metadata?.contentMetadataViewModel?.metadataRows || [];
+    for (const row of rows) {
+      const parts = row?.metadataParts || [];
+      for (const part of parts) {
+        const txt = part?.text?.content || '';
+        if (txt.includes('đăng ký') || txt.toLowerCase().includes('subscribers') || txt.includes('구독자')) {
+          subscriberCount = txt;
+        } else if (txt.toLowerCase().includes('video') || txt.includes('동영상')) {
+          videoCount = txt;
+        }
+      }
+    }
+  }
+
+  // 2. Legacy YouTube c4TabbedHeaderRenderer
+  const c4 = data?.header?.c4TabbedHeaderRenderer;
+  if (c4) {
+    if (!title) title = c4.title || '';
+    if (!avatar) {
+      const thumbs = c4.avatar?.thumbnails || [];
+      avatar = thumbs.length > 0 ? thumbs[thumbs.length - 1]?.url : '';
+    }
+    if (!subscriberCount) {
+      subscriberCount = c4.subscriberCountText?.simpleText || c4.subscriberCountText?.runs?.[0]?.text || null;
+    }
+    if (!videoCount) {
+      videoCount = c4.videosCountText?.runs?.[0]?.text || c4.videosCountText?.simpleText || null;
+    }
+  }
+
+  // 3. Fallback: scan raw JSON if total videos wasn't extracted
+  if (!videoCount) {
+    try {
+      const raw = JSON.stringify(data);
+      const m = raw.match(/"(\d[\d,\.]*\s*(?:N|Tr|M|K)?\s*video)"/i) ||
+                raw.match(/"(\d[\d,\.]*\s*(?:N|Tr|M|K)?\s*videos?)"/i) ||
+                raw.match(/"(\d[\d,\.]*\s*(?:N|Tr|M|K)?\s*개의\s*동영상)"/i) ||
+                raw.match(/(\d[\d,\.]*\s*(?:N|Tr|M|K)?\s*video)/i);
+      if (m) videoCount = m[1];
+    } catch (e) {}
+  }
+
+  return {
+    title,
+    avatar,
+    subscriberCount,
+    totalVideos: videoCount
+  };
+}
+
+async function getChannelMetadata(channelId, channelUrl) {
+  let partialMeta = {};
+
+  // Method 1: YouTube InnerTube browse API (super fast, ~50-80ms)
+  try {
+    const browseUrl = 'https://www.youtube.com/youtubei/v1/browse';
+    const payload = {
+      context: {
+        client: {
+          clientName: 'WEB',
+          clientVersion: '2.20240101.00.00',
+          hl: 'vi'
+        }
+      },
+      browseId: channelId
+    };
+
+    const resp = await fetch(browseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (resp.ok) {
+      const data = await resp.json();
+      const meta = extractMetadataFromYtData(data);
+      if (meta && meta.totalVideos) {
+        return meta;
+      }
+      if (meta && (meta.title || meta.avatar)) {
+        partialMeta = meta;
+      }
+    }
+  } catch (err) {
+    console.warn('InnerTube browse API failed, falling back to HTML:', err);
+  }
+
+  // Method 2: Channel Page HTML Scraping Fallback
+  try {
+    const targetUrl = (channelUrl && channelUrl.includes('youtube.com'))
+      ? channelUrl
+      : `https://www.youtube.com/channel/${channelId}`;
+
+    const resp = await fetch(targetUrl, {
+      headers: {
+        'Accept-Language': 'vi,en;q=0.9'
+      }
+    });
+
+    if (resp.ok) {
+      const html = await resp.text();
+
+      // Extract ytInitialData
+      const m = html.match(/var ytInitialData\s*=\s*({.+?});<\/script>/) ||
+                html.match(/window\["ytInitialData"\]\s*=\s*({.+?});<\/script>/);
+      if (m) {
+        try {
+          const data = JSON.parse(m[1]);
+          const meta = extractMetadataFromYtData(data);
+          if (meta && meta.totalVideos) {
+            return {
+              ...partialMeta,
+              ...meta
+            };
+          }
+        } catch (e) {
+          console.warn('Failed to parse ytInitialData JSON:', e);
+        }
+      }
+
+      // Check contentMetadataViewModel directly in HTML
+      const vmMatch = html.match(/"contentMetadataViewModel":\s*({.+?"delimiter":.+?})/);
+      if (vmMatch) {
+        try {
+          const vm = JSON.parse(vmMatch[1]);
+          for (const r of vm.metadataRows || []) {
+            for (const p of r.metadataParts || []) {
+              const txt = p.text?.content || '';
+              if (txt.toLowerCase().includes('video') || txt.includes('동영상')) {
+                return {
+                  ...partialMeta,
+                  totalVideos: txt
+                };
+              }
+            }
+          }
+        } catch (e) {}
+      }
+
+      // Regex fallback across HTML
+      const regexMatch = html.match(/"(\d[\d,\.]*\s*(?:N|Tr|M|K)?\s*video)"/i) ||
+                         html.match(/(\d[\d,\.]*\s*(?:N|Tr|M|K)?\s*video)/i);
+      if (regexMatch) {
+        return {
+          ...partialMeta,
+          totalVideos: regexMatch[1]
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('HTML scraping fallback error:', err);
+  }
+
+  return partialMeta;
 }
 
 function parseRssFeed(xml) {
