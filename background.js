@@ -1,7 +1,34 @@
-// Background service worker - YouTube Channel Checker (RSS Feed Mode - No API Key Needed)
+// Background service worker - YouTube Channel Checker (Side Panel & RSS Feed Mode - No API Key Needed)
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('YouTube Channel Checker installed (RSS Mode - 100% Free, No API Key)!');
+  console.log('YouTube Channel Checker installed (Side Panel & RSS Mode - 100% Free, No API Key)!');
+
+  // Configure side panel behavior: open side panel when clicking the toolbar action icon
+  if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+    chrome.sidePanel
+      .setPanelBehavior({ openPanelOnActionClick: true })
+      .catch((error) => console.error('SidePanel setPanelBehavior error:', error));
+  }
 });
+
+// Configure side panel on startup/worker awake
+if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((error) => console.error('SidePanel setPanelBehavior error:', error));
+}
+
+// Fallback: If action.onClicked triggers, open the side panel
+if (chrome.action && chrome.action.onClicked) {
+  chrome.action.onClicked.addListener(async (tab) => {
+    if (chrome.sidePanel && chrome.sidePanel.open) {
+      try {
+        await chrome.sidePanel.open({ windowId: tab.windowId });
+      } catch (e) {
+        console.error('Failed to open side panel on click:', e);
+      }
+    }
+  });
+}
 
 // Cache channel metadata to avoid re-fetching web pages repeatedly
 const channelCache = new Map();
