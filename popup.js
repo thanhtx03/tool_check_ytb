@@ -1,23 +1,8 @@
 // ===== State =====
-let apiKey = '';
 const MAX_CHANNELS = 500;
 let lastImportSourceName = '';
 
 // ===== DOM Elements =====
-const settingsBtn      = document.getElementById('settingsBtn');
-const apiPanel         = document.getElementById('apiPanel');
-const closePanelBtn    = document.getElementById('closePanelBtn');
-const saveApiBtn       = document.getElementById('saveApiBtn');
-const apiKeyInput      = document.getElementById('apiKeyInput');
-const toggleApiKey     = document.getElementById('toggleApiKey');
-const noApiBanner      = document.getElementById('noApiBanner');
-const goToApiBtn       = document.getElementById('goToApiBtn');
-
-const pinBtn           = document.getElementById('pinBtn');
-const pinTooltip       = document.getElementById('pinTooltip');
-const pinTooltipClose  = document.getElementById('pinTooltipClose');
-const pinWrap          = document.getElementById('pinWrap');
-
 const checkDateInput   = document.getElementById('checkDate');
 const quickDateBtns    = document.querySelectorAll('.quick-date-btn');
 
@@ -56,14 +41,7 @@ async function init() {
   }
 
   // Load storage
-  const stored = await chrome.storage.local.get(['ytApiKey', 'savedChannels', 'importedFile']);
-
-  if (stored.ytApiKey) {
-    apiKey = stored.ytApiKey;
-    if (apiKeyInput) apiKeyInput.value = apiKey;
-  }
-  // Method 1: RSS mode is active, API key is optional, do not show warning banner
-  if (noApiBanner) noApiBanner.style.display = 'none';
+  const stored = await chrome.storage.local.get(['savedChannels', 'importedFile']);
 
   // Load saved channels
   const saved = stored.savedChannels && stored.savedChannels.length > 0 ? stored.savedChannels : [''];
@@ -76,74 +54,6 @@ async function init() {
 
   setDateOffset(0);
 }
-
-// ===== Settings Panel =====
-if (settingsBtn) {
-  settingsBtn.addEventListener('click', () => {
-    if (apiPanel) apiPanel.style.display = 'block';
-  });
-}
-
-if (closePanelBtn) {
-  closePanelBtn.addEventListener('click', () => {
-    if (apiPanel) apiPanel.style.display = 'none';
-  });
-}
-
-if (goToApiBtn) {
-  goToApiBtn.addEventListener('click', () => {
-    if (apiPanel) apiPanel.style.display = 'block';
-  });
-}
-
-if (toggleApiKey) {
-  toggleApiKey.addEventListener('click', () => {
-    const isPwd = apiKeyInput.type === 'password';
-    apiKeyInput.type = isPwd ? 'text' : 'password';
-    toggleApiKey.style.color = isPwd ? 'var(--accent-red)' : 'var(--text-muted)';
-  });
-}
-
-if (saveApiBtn) {
-  saveApiBtn.addEventListener('click', async () => {
-    const key = apiKeyInput.value.trim();
-    if (!key) {
-      showToast('Vui lòng nhập API Key!', 'error');
-      return;
-    }
-    if (!key.startsWith('AIza')) {
-      showToast('API Key không đúng định dạng (thường bắt đầu bằng AIza)!', 'error');
-      return;
-    }
-    apiKey = key;
-    await chrome.storage.local.set({ ytApiKey: key });
-    if (noApiBanner) noApiBanner.style.display = 'none';
-    if (apiPanel) apiPanel.style.display = 'none';
-    showToast('✓ Đã lưu API Key thành công!');
-  });
-}
-
-// ===== Pin Button & Tooltip =====
-if (pinBtn && pinTooltip) {
-  pinBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isHidden = pinTooltip.style.display === 'none' || !pinTooltip.style.display;
-    pinTooltip.style.display = isHidden ? 'block' : 'none';
-  });
-}
-
-if (pinTooltipClose && pinTooltip) {
-  pinTooltipClose.addEventListener('click', (e) => {
-    e.stopPropagation();
-    pinTooltip.style.display = 'none';
-  });
-}
-
-document.addEventListener('click', (e) => {
-  if (pinWrap && pinTooltip && !pinWrap.contains(e.target)) {
-    pinTooltip.style.display = 'none';
-  }
-});
 
 // ===== Date Picker =====
 function setDateOffset(offset) {
