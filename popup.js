@@ -205,6 +205,18 @@ if (clearAllBtn) {
 }
 
 // ===== Paste / Batch Import =====
+function cleanYoutubeUrl(url) {
+  let u = url.trim();
+  if (!u.startsWith('http://') && !u.startsWith('https://')) {
+    u = 'https://' + u;
+  }
+  // Strip tracking parameters (?si=..., etc.)
+  u = u.split('?')[0].replace(/\/+$/, '');
+  // Normalize domain
+  u = u.replace(/https?:\/\/(?:www\.)?youtube\.com\//i, 'https://www.youtube.com/');
+  return u;
+}
+
 function extractUrls(text) {
   if (!text) return [];
   const rawLines = text.split(/[\r\n,;]+/);
@@ -213,15 +225,11 @@ function extractUrls(text) {
   for (let line of rawLines) {
     line = line.trim();
     if (!line || line.startsWith('#') || line.startsWith('//')) continue;
-    
-    // Normalize prefix
-    if (!line.startsWith('http://') && !line.startsWith('https://')) {
-      line = 'https://' + line;
-    }
 
-    if (line.includes('youtube.com') || line.includes('youtu.be')) {
-      if (!found.includes(line)) {
-        found.push(line);
+    if (line.includes('youtube.com') || line.includes('youtu.be') || /^UC[\w-]{22}$/.test(line)) {
+      const cleaned = cleanYoutubeUrl(line);
+      if (cleaned && !found.includes(cleaned)) {
+        found.push(cleaned);
       }
     }
   }

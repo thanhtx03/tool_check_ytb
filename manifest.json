@@ -26,8 +26,10 @@
     "clipboardRead"
   ],
   "host_permissions": [
-    "https://www.googleapis.com/*",
-    "https://www.youtube.com/*"
+    "*://*.youtube.com/*",
+    "*://youtube.com/*",
+    "*://youtu.be/*",
+    "https://www.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js"
